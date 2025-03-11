@@ -38,6 +38,16 @@ class Order(models.Model):
 		return str(self.id)
 
 	@property
+	def shipping(self):
+		shipping_required = False
+		order_items=self.orderitem_set.all()
+		for item in order_items:
+			if not item.product.digital:
+				shipping_required = True
+				break
+		return shipping_required
+
+	@property
 	def get_cart_total(self):
 		order_items=self.orderitem_set.all()
 		total=0
