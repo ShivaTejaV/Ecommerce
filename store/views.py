@@ -1,18 +1,26 @@
 from django.shortcuts import render
+from django.template.context_processors import request
+
 from .models import *
 from .models import OrderItem
 
 
 from django.http import JsonResponse
 import json
+import datetime
 
 
 # Create your views here.
 def store(request):
 
     if request.user.is_authenticated:
-        curses=request.user.customer
-        order,created = Order.objects.get_or_create(customer=curses,complete=False)
+        customer=request.user.customer
+
+        order = Order.objects.filter(customer=customer, complete=False).first() or Order.objects.filter(
+            customer=customer, complete=True).first()
+        if order is None:  # If no order found at all, create a new one
+            order = Order.objects.create(customer=customer)
+
         items=order.orderitem_set.all()
         cart_items=order.get_cart_items
     else:
@@ -27,7 +35,7 @@ def store(request):
 def cart(request):
     if request.user.is_authenticated:
         customer=request.user.customer
-        order,created = Order.objects.get_or_create(customer=customer)
+        order,created = Order.objects.get_or_create(customer=customer,complete=False)
         items = order.orderitem_set.all()
         cart_items = order.get_cart_items
     else:
@@ -42,7 +50,7 @@ def cart(request):
 def checkout(request):
     if request.user.is_authenticated:
         customer = request.user.customer
-        order, created = Order.objects.get_or_create(customer=customer)
+        order, created = Order.objects.get_or_create(customer=customer,complete=False)
         items = order.orderitem_set.all()
         cart_items = order.get_cart_items
     else:
@@ -78,3 +86,35 @@ def update_item(request):
             order_item.save()  # Save only if not deleting
 
     return JsonResponse({'message': 'Item updated successfully'}, safe=False)
+
+def process_order(request):
+    transaction_id=datetime.datetime.now().timestamp()
+    data=json.loads(request.body)
+
+
+    if request.user.is_authenticated:
+        customer=request.user.customer
+        order, created = Order.objects.get_or_create(customer=customer,complete=False)
+        total = float(data['form']['total'])
+        order.transaction_id = transaction_id
+
+        if total==order.get_cart_total:
+            order.complete = True
+
+        print("Shipping Data Received:", data.get('shipping'))
+
+        print(f"Order shipping required: {order.shipping}")
+
+        if order.shipping ==True:
+            ShippingAddress.objects.create(
+                customer=customer,
+                order=order,
+                address=data['shipping']['address'],
+                city=data['shipping']['city'],
+                state=data['shipping']['state'],
+                pincode=data['shipping']['pincode'],
+            )
+        order.save()
+    else:
+        print('User is not logged in')
+    return JsonResponse('Payment Complete', safe=False)
